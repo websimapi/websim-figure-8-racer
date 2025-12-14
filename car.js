@@ -7,10 +7,10 @@ export class Car {
         this.camera = camera;
         
         this.speed = 0;
-        this.maxSpeed = 2.2; // Much faster for the massive track
-        this.acceleration = 0.03;
-        this.friction = 0.97;
-        this.turnSpeed = 0.045;
+        this.maxSpeed = 5.5; // Super fast for huge map
+        this.acceleration = 0.08;
+        this.friction = 0.98;
+        this.turnSpeed = 0.04;
         this.heading = 0; // Radians
 
         this.velocity = new THREE.Vector3();
@@ -23,7 +23,7 @@ export class Car {
         
         this.grounded = false;
         this.verticalVel = 0;
-        this.gravity = 0.02;
+        this.gravity = 0.08; // Stronger gravity for stickier handling
 
         this.engineSound = null;
     }
