@@ -6,25 +6,26 @@ export class Car {
         this.input = input;
         this.camera = camera;
         
-        this.speed = 0;
-        this.maxSpeed = 150; // Increased speed for massive 30x scale map
-        this.acceleration = 0.1; 
-        this.friction = 0.998; 
-        this.turnSpeed = 0.015; // Reduced turn speed for smoother control at high speed
-        this.heading = 0; // Radians
+        // Physics Configuration
+        this.acceleration = 4.0; 
+        this.drag = 0.98; // Air resistance / Rolling resistance
+        this.grip = 0.96; // Lateral friction (lower = more drift)
+        this.turnSpeed = 0.03; 
+        this.gravity = 1.0; 
+        this.maxReverseSpeed = 50;
 
-        this.velocity = new THREE.Vector3();
+        this.heading = 0; // Radians
+        this.velocity = new THREE.Vector3(); // World space velocity
+        this.verticalVel = 0;
+        
         this.mesh = this.createCarMesh();
-        this.mesh.position.set(0, 5, 0); // Start higher to drop in safely
+        this.mesh.position.set(0, 20, 0); // Start safely above ground
         this.scene.add(this.mesh);
 
         this.raycaster = new THREE.Raycaster();
         this.down = new THREE.Vector3(0, -1, 0);
         
         this.grounded = false;
-        this.verticalVel = 0;
-        this.gravity = 0.5; // Stronger gravity to keep car planted
-
         this.engineSound = null;
     }
 
@@ -100,141 +101,163 @@ export class Car {
 
     update(colliders) {
         const inputs = this.input.update();
+        const dt = 1/60; // Assuming ~60fps for physics calc
+
+        // --- 1. Horizontal Physics (Vector Based) ---
         
-        // Acceleration
+        // Apply Drag
+        this.velocity.multiplyScalar(this.drag);
+
+        // Apply Throttle (Force)
         if (inputs.throttle !== 0) {
-            this.speed += inputs.throttle * this.acceleration;
-        } else {
-            // Decel
-            this.speed *= this.friction;
+            const forward = new THREE.Vector3(Math.sin(this.heading), 0, Math.cos(this.heading));
+            // Reduce acceleration if trying to reverse rapidly or go over speed limit (simple cap)
+            const speed = this.velocity.length();
+            this.velocity.addScaledVector(forward, inputs.throttle * this.acceleration);
         }
+
+        // Steering
+        // Only steer effectively if moving
+        const speed = this.velocity.length();
+        if (speed > 0.5) {
+            // Reverse steering if going backward
+            const direction = this.velocity.dot(new THREE.Vector3(Math.sin(this.heading), 0, Math.cos(this.heading)));
+            const dirSign = direction > 0 ? 1 : -1;
+            
+            // Steer
+            this.heading += inputs.steering * this.turnSpeed * dirSign * Math.min(speed / 20, 1.0);
+        }
+
+        // Lateral Grip / Drifting
+        // Convert velocity to local space
+        const cosAngle = Math.cos(this.heading);
+        const sinAngle = Math.sin(this.heading);
         
-        // Cap speed
-        this.speed = Math.max(Math.min(this.speed, this.maxSpeed), -this.maxSpeed/2);
+        // Project velocity onto local axes
+        // Global X = Local Z * sin + Local X * cos
+        // Global Z = Local Z * cos - Local X * sin
+        // Inverse rotation simplified (2D):
+        const localZ = this.velocity.x * sinAngle + this.velocity.z * cosAngle; // Forward speed
+        const localX = this.velocity.x * cosAngle - this.velocity.z * sinAngle; // Sideways speed (Drift)
 
-        // Steering (only if moving)
-        if (Math.abs(this.speed) > 0.01) {
-            this.heading += inputs.steering * this.turnSpeed * Math.sign(this.speed);
-        }
+        // Apply Grip to sideways speed
+        const newLocalX = localX * this.grip;
+        
+        // Reconstruct Global Velocity
+        this.velocity.x = newLocalX * cosAngle + localZ * sinAngle;
+        this.velocity.z = -newLocalX * sinAngle + localZ * cosAngle;
 
-        // Calculate Physics Velocity
-        this.velocity.x = Math.sin(this.heading) * this.speed;
-        this.velocity.z = Math.cos(this.heading) * this.speed;
-
-        // Apply Horizontal movement
+        // Apply Position Change
         this.mesh.position.x += this.velocity.x;
         this.mesh.position.z += this.velocity.z;
 
-        // Vertical Physics (Raycast)
-        // Fix: Clamp ray start height to ensure we never cast from below the ground plane (y=-5)
-        // This prevents tunneling if the car falls fast or frame rate drops
-        const rayOriginY = Math.max(this.mesh.position.y + 100, 500);
 
+        // --- 2. Vertical Physics (Raycast) ---
+        
+        // Raycast relative to car (look down from slightly above)
+        // This prevents snapping to bridges far overhead
+        const rayOriginY = this.mesh.position.y + 10; 
+        
         this.raycaster.set(
             new THREE.Vector3(this.mesh.position.x, rayOriginY, this.mesh.position.z), 
             this.down
         );
         
-        // Recursive true to ensure we hit the ground mesh even if hierarchy changes
         const intersects = this.raycaster.intersectObjects(colliders, true);
         
-        // Find highest point below car
         let groundHeight = -Infinity;
-        let hitFound = false;
         let groundNormal = new THREE.Vector3(0, 1, 0);
+        let hitFound = false;
 
         for (let hit of intersects) {
-            if (hit.point.y > groundHeight) {
+            // Filter: Ignore vertical walls (normal.y close to 0) to prevent tilting 90 degrees
+            if (hit.point.y > groundHeight && hit.face.normal.y > 0.5) {
                 groundHeight = hit.point.y;
                 groundNormal = hit.face.normal;
                 hitFound = true;
             }
         }
 
-        // FALLBACK: If we missed everything (off-road logic safety), assume ground plane at y=-5
-        // This fixes "broken off-road" if the raycaster misses the ground mesh for any reason
-        if (!hitFound) {
-            groundHeight = -5;
-            groundNormal.set(0, 1, 0);
-            hitFound = true;
-        }
-
-        // Gravity / Ground Snap
+        // Logic to snap to ground or fall
+        const hoverHeight = 1.2; // Height of car origin above ground
+        
         if (hitFound) {
-            // Hover height avoids clipping (visual suspension)
-            const hoverHeight = 0.8; // Increased slightly to prevent clipping on uneven terrain
-            // Distance from car pivot to ground
             const dist = this.mesh.position.y - (groundHeight + hoverHeight);
             
-            // Increased snap range for better slope handling
-            if (dist < 5.0 && dist > -5.0) {
-                // Snap to ground
+            // Snap threshold (if close enough, stick to road)
+            if (dist < 10.0 && dist > -5.0) {
                 this.mesh.position.y = groundHeight + hoverHeight;
                 this.verticalVel = 0;
                 this.grounded = true;
-            } else if (dist < 0) {
-                // We are underground (tunneled), pop up
-                 this.mesh.position.y = groundHeight + hoverHeight;
-                 this.verticalVel = 0;
-                 this.grounded = true;
             } else {
+                // Too far above/below valid hit, treat as air
                 this.grounded = false;
             }
         } else {
             this.grounded = false;
         }
 
+        // Apply Gravity / Air Physics
         if (!this.grounded) {
             this.verticalVel -= this.gravity;
             this.mesh.position.y += this.verticalVel;
-            // Mid-air: slowly return to flat
-            groundNormal.set(0, 1, 0); 
+            
+            // Floor Clamp (Infinite Ground Plane)
+            // If we fall below -5 (ground level) and aren't on a bridge, catch it.
+            if (this.mesh.position.y < -5 + hoverHeight) {
+                 this.mesh.position.y = -5 + hoverHeight;
+                 this.verticalVel = 0;
+                 this.grounded = true;
+                 groundNormal.set(0, 1, 0); // Flat ground
+            } else {
+                 // In air, slowly upright the car
+                 groundNormal.set(0, 1, 0);
+            }
         }
 
-        // Orientation
-        // 1. Base rotation from heading (Yaw)
+
+        // --- 3. Orientation ---
+        
+        // Yaw
         const yawQ = new THREE.Quaternion();
         yawQ.setFromAxisAngle(new THREE.Vector3(0, 1, 0), this.heading);
         
-        // 2. Slope rotation (Pitch/Roll)
-        // Align World-Up to Ground-Normal
+        // Pitch/Roll (Slope)
         const slopeQ = new THREE.Quaternion();
         slopeQ.setFromUnitVectors(new THREE.Vector3(0, 1, 0), groundNormal);
         
-        // Combine: Apply Slope tilt to the Yaw-rotated object
-        // Order: We want the car to be yawed, AND then tilted to match ground.
-        // Actually, if we just multiply slopeQ * yawQ, it effectively tilts the 'horizontal' plane.
-        
+        // Combine
         const finalQ = new THREE.Quaternion();
         finalQ.multiplyQuaternions(slopeQ, yawQ);
         
         // Smooth rotation
-        this.mesh.quaternion.slerp(finalQ, 0.2);
+        this.mesh.quaternion.slerp(finalQ, 0.15);
 
-        // Camera Follow
-        // LOCKED CAMERA: No lerp, direct position copy to ensure it keeps up perfectly
-        const relativeOffset = new THREE.Vector3(0, 4.0, -9); // Slightly further back/up for better view
+
+        // --- 4. Camera Follow ---
+        
+        const relativeOffset = new THREE.Vector3(0, 6.0, -14); // Higher/Further for better visibility
         const cameraOffset = relativeOffset.clone().applyQuaternion(this.mesh.quaternion);
+        // Reduce vertical jitter by dampening the camera target Y
         const targetPos = this.mesh.position.clone().add(cameraOffset);
         
-        this.camera.position.copy(targetPos);
-        this.camera.lookAt(this.mesh.position.clone().add(new THREE.Vector3(0, 1.5, 0)));
+        // Simple smoothing for camera position
+        this.camera.position.lerp(targetPos, 0.2); // Tight lerp to reduce rigid lock vibration but keep it fast
+        this.camera.lookAt(this.mesh.position.clone().add(new THREE.Vector3(0, 2.0, 0)));
 
-        // Audio Pitch
+
+        // --- 5. Audio ---
         if (this.engineSound) {
-            // Normalized pitch based on maxSpeed to prevent crazy high frequencies
-            const speedRatio = Math.abs(this.speed) / this.maxSpeed;
-            const pitch = 0.5 + speedRatio * 1.5;
-            this.engineSound.playbackRate.value = pitch;
+            const velocityMag = this.velocity.length();
+            const pitch = 0.5 + (velocityMag / 100); // 100 is approx max speed ref
+            this.engineSound.playbackRate.value = Math.max(0.2, Math.min(pitch, 2.0));
         }
 
-        // Safety Respawn
-        if (this.mesh.position.y < -1000) {
-            this.mesh.position.set(0, 10, 0);
+        // Respawn if glitching deep
+        if (this.mesh.position.y < -500) {
+            this.mesh.position.set(0, 20, 0);
             this.velocity.set(0,0,0);
-            this.speed = 0;
-            this.heading = 0;
-            this.grounded = false;
+            this.verticalVel = 0;
         }
     }
 }
