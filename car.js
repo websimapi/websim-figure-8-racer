@@ -125,12 +125,10 @@ export class Car {
         this.mesh.position.x += this.velocity.x;
         this.mesh.position.z += this.velocity.z;
 
-        // Rotation
-        this.mesh.rotation.y = this.heading;
-
         // Vertical Physics (Raycast)
+        // Cast from higher up to catch steep slopes
         this.raycaster.set(
-            new THREE.Vector3(this.mesh.position.x, this.mesh.position.y + 2, this.mesh.position.z), 
+            new THREE.Vector3(this.mesh.position.x, this.mesh.position.y + 5, this.mesh.position.z), 
             this.down
         );
         
@@ -139,21 +137,32 @@ export class Car {
         // Find highest point below car
         let groundHeight = -100;
         let hitFound = false;
+        let groundNormal = new THREE.Vector3(0, 1, 0);
 
         for (let hit of intersects) {
-            // Check if hit is reasonably close below
-            if (hit.point.y <= this.mesh.position.y + 1 && hit.point.y > groundHeight) {
+            // Check if hit is reasonably close below relative to the cast origin
+            if (hit.point.y > groundHeight) {
                 groundHeight = hit.point.y;
+                groundNormal = hit.face.normal;
                 hitFound = true;
             }
         }
 
+        // Gravity / Ground Snap
         if (hitFound) {
-            // Snap or smooth to ground
-            if (this.mesh.position.y < groundHeight + 0.1) {
+            // Distance from car pivot to ground
+            const dist = this.mesh.position.y - groundHeight;
+            
+            if (dist < 1.0 && dist > -1.0) {
+                // Snap to ground
                 this.mesh.position.y = groundHeight;
                 this.verticalVel = 0;
                 this.grounded = true;
+            } else if (dist < 0) {
+                // We are underground, pop up
+                 this.mesh.position.y = groundHeight;
+                 this.verticalVel = 0;
+                 this.grounded = true;
             } else {
                 this.grounded = false;
             }
@@ -164,7 +173,29 @@ export class Car {
         if (!this.grounded) {
             this.verticalVel -= this.gravity;
             this.mesh.position.y += this.verticalVel;
+            // Mid-air: slowly return to flat
+            groundNormal.set(0, 1, 0); 
         }
+
+        // Orientation
+        // 1. Base rotation from heading (Yaw)
+        const yawQ = new THREE.Quaternion();
+        yawQ.setFromAxisAngle(new THREE.Vector3(0, 1, 0), this.heading);
+        
+        // 2. Slope rotation (Pitch/Roll)
+        // Align World-Up to Ground-Normal
+        const slopeQ = new THREE.Quaternion();
+        slopeQ.setFromUnitVectors(new THREE.Vector3(0, 1, 0), groundNormal);
+        
+        // Combine: Apply Slope tilt to the Yaw-rotated object
+        // Order: We want the car to be yawed, AND then tilted to match ground.
+        // Actually, if we just multiply slopeQ * yawQ, it effectively tilts the 'horizontal' plane.
+        
+        const finalQ = new THREE.Quaternion();
+        finalQ.multiplyQuaternions(slopeQ, yawQ);
+        
+        // Smooth rotation
+        this.mesh.quaternion.slerp(finalQ, 0.2);
 
         // Camera Follow
         const camOffset = new THREE.Vector3(

@@ -9,54 +9,89 @@ export class Track {
 
     generate() {
         // Curve definition
-        // Massive Figure-8 with Bridge
-        // Center at 0,0,0
-        
+        // Massive Figure-8 with Bridge - Adjusted for smoother driving
         const path = new THREE.CatmullRomCurve3([
-            // --- UNDERPASS SECTION (Crossing Center Low) ---
-            new THREE.Vector3(0, 0, 0),
-            
-            // --- RIGHT LOOP (Ground Level -> Climbing) ---
-            new THREE.Vector3(150, 0, 120),     // Wide turn out
-            new THREE.Vector3(280, 0, 0),       // Far Right Apex (Ground)
-            new THREE.Vector3(150, 9, -120),    // Climbing return
-            
-            // --- OVERPASS SECTION (Crossing Center High) ---
-            new THREE.Vector3(0, 24, 0),        // High Bridge Clearance
-            
-            // --- LEFT LOOP (Descending -> Ground) ---
-            new THREE.Vector3(-150, 15, 120),   // Descending out
-            new THREE.Vector3(-280, 0, 0),      // Far Left Apex (Ground)
-            new THREE.Vector3(-150, 0, -120),   // Return to center low
-            
-        ], true, 'catmullrom', 0.3); // Lower tension for smoother, less twisty curves
+            new THREE.Vector3(0, 0, 0),          // Center Low
+            new THREE.Vector3(180, 0, 140),      // Wide right turn start
+            new THREE.Vector3(320, 0, 0),        // Far Right Apex
+            new THREE.Vector3(180, 8, -140),     // Return loop, starting climb
+            new THREE.Vector3(0, 22, 0),         // Bridge Peak (Crossing)
+            new THREE.Vector3(-180, 14, 140),    // Descending loop
+            new THREE.Vector3(-320, 0, 0),       // Far Left Apex
+            new THREE.Vector3(-180, 0, -140),    // Return to center
+        ], true, 'catmullrom', 0.1); // Very low tension for gentle curves
 
-        // --- VISUALS ---
-
-        // 1. Road Surface
-        const roadShape = new THREE.Shape();
-        const roadWidth = 18; // Significantly wider for the larger scale
-        const wallHeight = 2;
-        const wallThick = 0.8;
-
-        // Cross section of road (U shape for barriers)
-        // Road bed
-        roadShape.moveTo(-roadWidth/2 - wallThick, wallHeight);
-        roadShape.lineTo(-roadWidth/2 - wallThick, -0.5); // Outer bottom left
-        roadShape.lineTo(roadWidth/2 + wallThick, -0.5);  // Outer bottom right
-        roadShape.lineTo(roadWidth/2 + wallThick, wallHeight); // Outer top right
-        roadShape.lineTo(roadWidth/2, wallHeight); // Inner top right (barrier top)
-        roadShape.lineTo(roadWidth/2, 0); // Road surface right
-        roadShape.lineTo(-roadWidth/2, 0); // Road surface left
-        roadShape.lineTo(-roadWidth/2, wallHeight); // Inner top left
+        // --- CUSTOM ROAD GEOMETRY GENERATION ---
+        // Manually building the mesh to ensure zero banking/roll ("keep up")
         
-        const roadGeo = new THREE.ExtrudeGeometry(roadShape, {
-            extrudePath: path,
-            steps: 400, // Higher resolution for smoother curves
-            bevelEnabled: false
-        });
+        const pointsCount = 1200;
+        const points = path.getSpacedPoints(pointsCount);
+        const roadWidth = 24; // Very wide for drivability
+        
+        const positions = [];
+        const uvs = [];
+        const indices = [];
 
-        const asphaltTex = createTexture('asphalt_texture.png', 6, 600); // More repeats for longer track
+        // Temporary vectors
+        const up = new THREE.Vector3(0, 1, 0);
+        const forward = new THREE.Vector3();
+        const right = new THREE.Vector3();
+        const pL = new THREE.Vector3();
+        const pR = new THREE.Vector3();
+
+        // 1. Build the Ribbon
+        for (let i = 0; i < points.length; i++) {
+            const p = points[i];
+            
+            // Calculate Forward Tangent
+            if (i < points.length - 1) {
+                forward.subVectors(points[i+1], p).normalize();
+            } else {
+                // Wrap around tangent
+                forward.subVectors(points[1], points[0]).normalize(); 
+            }
+
+            // Calculate Right Vector (always flat relative to world Y)
+            // Cross Up with Forward gives a horizontal Right vector
+            right.crossVectors(up, forward).normalize();
+
+            // Vertices
+            pL.copy(p).addScaledVector(right, -roadWidth / 2); // Left edge
+            pR.copy(p).addScaledVector(right, roadWidth / 2);  // Right edge
+
+            positions.push(pL.x, pL.y, pL.z); // Vertex 2*i
+            positions.push(pR.x, pR.y, pR.z); // Vertex 2*i + 1
+
+            // UVs
+            const dist = i / points.length;
+            const repeatY = 200; 
+            uvs.push(0, dist * repeatY);
+            uvs.push(1, dist * repeatY);
+
+            // Indices (Quads)
+            if (i < points.length - 1) {
+                const a = i * 2;
+                const b = i * 2 + 1;
+                const c = (i + 1) * 2;
+                const d = (i + 1) * 2 + 1;
+
+                // Face 1
+                indices.push(a, d, b);
+                // Face 2
+                indices.push(a, c, d);
+            }
+        }
+
+        const roadGeo = new THREE.BufferGeometry();
+        roadGeo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        roadGeo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+        roadGeo.setIndex(indices);
+        roadGeo.computeVertexNormals();
+
+        // Material
+        const asphaltTex = createTexture('asphalt_texture.png', 1, 1); 
+        asphaltTex.repeat.set(2, 100); // Adjust repeat manually
+        
         const mat = new THREE.MeshStandardMaterial({ 
             map: asphaltTex,
             roughness: 0.8,
@@ -64,6 +99,59 @@ export class Track {
         });
 
         const trackMesh = new THREE.Mesh(roadGeo, mat);
+        
+        // Create side barriers (Visual only, simple strips)
+        // Re-use points to make walls
+        const wallGeo = new THREE.BufferGeometry();
+        const wallPos = [];
+        const wallInd = [];
+        const wallHeight = 1.5;
+
+        for (let i = 0; i < points.length; i++) {
+            const p = points[i];
+             // Recalc forward/right same as above
+             if (i < points.length - 1) {
+                forward.subVectors(points[i+1], p).normalize();
+            } else {
+                forward.subVectors(points[1], points[0]).normalize(); 
+            }
+            right.crossVectors(up, forward).normalize();
+
+            const pL = new THREE.Vector3().copy(p).addScaledVector(right, -roadWidth / 2);
+            const pR = new THREE.Vector3().copy(p).addScaledVector(right, roadWidth / 2);
+
+            // Left Wall
+            wallPos.push(pL.x, pL.y, pL.z);                 // Bottom
+            wallPos.push(pL.x, pL.y + wallHeight, pL.z);    // Top
+
+            // Right Wall
+            wallPos.push(pR.x, pR.y, pR.z);                 // Bottom
+            wallPos.push(pR.x, pR.y + wallHeight, pR.z);    // Top
+
+            if (i < points.length - 1) {
+                // Indices for walls
+                // Left Wall (vertices 4*i, 4*i+1) -> connect to 4*(i+1)...
+                const base = i * 4;
+                const next = (i + 1) * 4;
+                
+                // Left Wall Quad
+                // b, b+1, n+1, n
+                wallInd.push(base, next, base + 1);
+                wallInd.push(base + 1, next, next + 1);
+
+                // Right Wall Quad
+                // b+2, b+3, n+3, n+2
+                wallInd.push(base + 2, base + 3, next + 2);
+                wallInd.push(base + 3, next + 3, next + 2);
+            }
+        }
+        
+        wallGeo.setAttribute('position', new THREE.Float32BufferAttribute(wallPos, 3));
+        wallGeo.setIndex(wallInd);
+        wallGeo.computeVertexNormals();
+        const wallMat = new THREE.MeshStandardMaterial({ color: 0x888888 });
+        const walls = new THREE.Mesh(wallGeo, wallMat);
+        trackMesh.add(walls);
         trackMesh.castShadow = true;
         trackMesh.receiveShadow = true;
         this.scene.add(trackMesh);
