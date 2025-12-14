@@ -1,25 +1,27 @@
 import * as THREE from 'three';
 
 export class Car {
-    constructor(scene, input, camera) {
+    constructor(scene, input, camera, isRemote = false, color = 0xff3300) {
         this.scene = scene;
         this.input = input;
         this.camera = camera;
+        this.isRemote = isRemote;
+        this.color = color;
         
         // Physics Configuration
-        this.acceleration = 1.2; // Reduced acceleration
-        this.drag = 0.98; // Air resistance / Rolling resistance
-        this.grip = 0.96; // Lateral friction (lower = more drift)
+        this.acceleration = 1.2; 
+        this.drag = 0.98; 
+        this.grip = 0.96; 
         this.turnSpeed = 0.015; 
         this.gravity = 1.0; 
         this.maxReverseSpeed = 50;
 
-        this.heading = 0; // Radians
-        this.velocity = new THREE.Vector3(); // World space velocity
+        this.heading = 0; 
+        this.velocity = new THREE.Vector3(); 
         this.verticalVel = 0;
         
-        this.mesh = this.createCarMesh();
-        this.mesh.position.set(0, 20, 0); // Start safely above ground
+        this.mesh = this.createCarMesh(color);
+        this.mesh.position.set(0, 20, 0); 
         this.scene.add(this.mesh);
 
         this.raycaster = new THREE.Raycaster();
@@ -27,9 +29,16 @@ export class Car {
         
         this.grounded = false;
         this.engineSound = null;
+
+        // Remote interpolation
+        this.targetPos = new THREE.Vector3();
+        this.targetQuat = new THREE.Quaternion();
+        this.hasReceivedData = false;
     }
 
     initAudio(audioContext, buffer) {
+        if (this.isRemote) return; // No audio for remote cars to save perf
+        
         this.engineSound = audioContext.createBufferSource();
         this.engineSound.buffer = buffer;
         this.engineSound.loop = true;
@@ -44,12 +53,12 @@ export class Car {
         this.engineGain = gainNode;
     }
 
-    createCarMesh() {
+    createCarMesh(color) {
         const container = new THREE.Group();
 
         // Body
         const bodyGeo = new THREE.BoxGeometry(1.2, 0.5, 2.2);
-        const bodyMat = new THREE.MeshStandardMaterial({ color: 0xff3300, roughness: 0.3, metalness: 0.5 });
+        const bodyMat = new THREE.MeshStandardMaterial({ color: color, roughness: 0.3, metalness: 0.5 });
         const body = new THREE.Mesh(bodyGeo, bodyMat);
         body.position.y = 0.5;
         body.castShadow = true;
@@ -79,29 +88,46 @@ export class Car {
             container.add(w);
         });
 
-        // Headlights
-        const lightGeo = new THREE.SphereGeometry(0.15);
-        const lightMat = new THREE.MeshBasicMaterial({ color: 0xffffaa });
-        const hl1 = new THREE.Mesh(lightGeo, lightMat);
-        const hl2 = new THREE.Mesh(lightGeo, lightMat);
-        hl1.position.set(-0.4, 0.5, 1.1);
-        hl2.position.set(0.4, 0.5, 1.1);
-        container.add(hl1);
-        container.add(hl2);
+        if (!this.isRemote) {
+            // Headlights
+            const lightGeo = new THREE.SphereGeometry(0.15);
+            const lightMat = new THREE.MeshBasicMaterial({ color: 0xffffaa });
+            const hl1 = new THREE.Mesh(lightGeo, lightMat);
+            const hl2 = new THREE.Mesh(lightGeo, lightMat);
+            hl1.position.set(-0.4, 0.5, 1.1);
+            hl2.position.set(0.4, 0.5, 1.1);
+            container.add(hl1);
+            container.add(hl2);
 
-        // Spotlights for night/effect
-        const sl1 = new THREE.SpotLight(0xffffee, 10, 30, 0.5, 0.5, 1);
-        sl1.position.set(0, 1, 0);
-        sl1.target.position.set(0, 0, 10);
-        container.add(sl1);
-        container.add(sl1.target);
+            // Spotlights for night/effect
+            const sl1 = new THREE.SpotLight(0xffffee, 10, 30, 0.5, 0.5, 1);
+            sl1.position.set(0, 1, 0);
+            sl1.target.position.set(0, 0, 10);
+            container.add(sl1);
+            container.add(sl1.target);
+        }
 
         return container;
     }
 
+    updateRemoteData(data) {
+        if (!this.hasReceivedData) {
+            this.mesh.position.set(data.x, data.y, data.z);
+            this.mesh.quaternion.set(data.qx, data.qy, data.qz, data.qw);
+            this.hasReceivedData = true;
+        }
+        this.targetPos.set(data.x, data.y, data.z);
+        this.targetQuat.set(data.qx, data.qy, data.qz, data.qw);
+    }
+
     update(colliders) {
+        if (this.isRemote) {
+            this.mesh.position.lerp(this.targetPos, 0.2);
+            this.mesh.quaternion.slerp(this.targetQuat, 0.2);
+            return;
+        }
+
         const inputs = this.input.update();
-        const dt = 1/60; // Assuming ~60fps for physics calc
 
         // --- 1. Horizontal Physics (Vector Based) ---
         
@@ -112,7 +138,6 @@ export class Car {
         if (inputs.throttle !== 0) {
             const forward = new THREE.Vector3(Math.sin(this.heading), 0, Math.cos(this.heading));
             // Reduce acceleration if trying to reverse rapidly or go over speed limit (simple cap)
-            const speed = this.velocity.length();
             this.velocity.addScaledVector(forward, inputs.throttle * this.acceleration);
         }
 
@@ -128,20 +153,46 @@ export class Car {
             this.heading += inputs.steering * this.turnSpeed * dirSign * Math.min(speed / 20, 1.0);
         }
 
-        // Wall Collision
+        // Wall Collision (Improved with Bouncing)
         if (speed > 0.1) {
-            const dir = this.velocity.clone().normalize();
-            // Cast from slightly above center to hit the wall mesh
-            const rayOrigin = this.mesh.position.clone().add(new THREE.Vector3(0, 1.0, 0));
-            this.raycaster.set(rayOrigin, dir);
+            // Raycast forward-ish
+            const velocityDir = this.velocity.clone().normalize();
+            // Also check slightly left/right to catch sideswipes
+            const angles = [0, 0.5, -0.5]; // radians offset
             
-            const hits = this.raycaster.intersectObjects(colliders, true);
-            for (let hit of hits) {
-                if (hit.object.name === 'wall' && hit.distance < 2.5) {
-                    // Bounce and stop
-                    this.velocity.multiplyScalar(-0.5);
-                    this.mesh.position.addScaledVector(dir, -(2.5 - hit.distance));
-                    break;
+            for(let ang of angles) {
+                const checkDir = velocityDir.clone().applyAxisAngle(new THREE.Vector3(0,1,0), ang);
+                const rayOrigin = this.mesh.position.clone().add(new THREE.Vector3(0, 1.0, 0));
+                this.raycaster.set(rayOrigin, checkDir);
+                
+                const hits = this.raycaster.intersectObjects(colliders, true);
+                let hitWall = null;
+                
+                for (let hit of hits) {
+                    if (hit.object.name === 'wall' && hit.distance < 3.0) {
+                        hitWall = hit;
+                        break;
+                    }
+                }
+
+                if (hitWall) {
+                    const normal = hitWall.face.normal.clone();
+                    
+                    // Reflect Velocity: v' = v - 2 * (v . n) * n
+                    const vDotN = this.velocity.dot(normal);
+                    
+                    // Only reflect if we are moving INTO the wall
+                    if (vDotN < 0) {
+                        // Bouncy reflection
+                        const restitution = 0.5; // How much speed we keep
+                        const reflection = normal.clone().multiplyScalar(2 * vDotN);
+                        this.velocity.sub(reflection).multiplyScalar(restitution);
+                        
+                        // Force push out
+                        const pushOut = normal.clone().multiplyScalar(3.1 - hitWall.distance);
+                        this.mesh.position.add(pushOut);
+                    }
+                    break; // One collision per frame is enough
                 }
             }
         }
@@ -152,9 +203,6 @@ export class Car {
         const sinAngle = Math.sin(this.heading);
         
         // Project velocity onto local axes
-        // Global X = Local Z * sin + Local X * cos
-        // Global Z = Local Z * cos - Local X * sin
-        // Inverse rotation simplified (2D):
         const localZ = this.velocity.x * sinAngle + this.velocity.z * cosAngle; // Forward speed
         const localX = this.velocity.x * cosAngle - this.velocity.z * sinAngle; // Sideways speed (Drift)
 
@@ -188,8 +236,8 @@ export class Car {
         let hitFound = false;
 
         for (let hit of intersects) {
-            // Filter: Ignore vertical walls (normal.y close to 0) to prevent tilting 90 degrees
-            if (hit.point.y > groundHeight && hit.face.normal.y > 0.5) {
+            // Filter: Ignore vertical walls for ground snapping
+            if (hit.object.name !== 'wall' && hit.point.y > groundHeight && hit.face.normal.y > 0.5) {
                 groundHeight = hit.point.y;
                 groundNormal = hit.face.normal;
                 hitFound = true;
@@ -221,7 +269,6 @@ export class Car {
             this.mesh.position.y += this.verticalVel;
             
             // Floor Clamp (Infinite Ground Plane)
-            // If we fall below -5 (ground level) and aren't on a bridge, catch it.
             if (this.mesh.position.y < -0.2 + hoverHeight) {
                  this.mesh.position.y = -0.2 + hoverHeight;
                  this.verticalVel = 0;
@@ -252,16 +299,19 @@ export class Car {
         this.mesh.quaternion.slerp(finalQ, 0.15);
 
 
-        // --- 4. Camera Follow ---
-        
-        const relativeOffset = new THREE.Vector3(0, 5.0, -12); // Closer and lower for tighter feel
-        const cameraOffset = relativeOffset.clone().applyQuaternion(this.mesh.quaternion);
-        // Reduce vertical jitter by dampening the camera target Y
-        const targetPos = this.mesh.position.clone().add(cameraOffset);
-        
-        // Stiffer smoothing for camera position to keep up
-        this.camera.position.lerp(targetPos, 0.5); 
-        this.camera.lookAt(this.mesh.position.clone().add(new THREE.Vector3(0, 1.5, 0)));
+        // --- 4. Camera Follow (RIGID) ---
+        // Completely rigid follow to prevent "too far away" issue
+        if (this.camera) {
+            const relativeOffset = new THREE.Vector3(0, 6.0, -15); 
+            const cameraOffset = relativeOffset.clone().applyQuaternion(this.mesh.quaternion);
+            
+            // Directly set position, do not lerp
+            const targetPos = this.mesh.position.clone().add(cameraOffset);
+            this.camera.position.copy(targetPos);
+            
+            // Look slightly above the car
+            this.camera.lookAt(this.mesh.position.clone().add(new THREE.Vector3(0, 2.0, 0)));
+        }
 
 
         // --- 5. Audio ---

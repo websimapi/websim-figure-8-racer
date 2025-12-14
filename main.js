@@ -44,8 +44,17 @@ class Game {
         const { mesh } = this.track.generate();
         
         this.input = new InputController();
-        this.car = new Car(this.scene, this.input, this.camera);
         
+        // Generate random car color for local player
+        const colors = [0xff0000, 0x00ff00, 0x0000ff, 0xffff00, 0xff00ff, 0x00ffff, 0xff8800];
+        this.myColor = colors[Math.floor(Math.random() * colors.length)];
+        
+        this.car = new Car(this.scene, this.input, this.camera, false, this.myColor);
+        
+        // Multiplayer Setup
+        this.peers = {}; // id -> Car instance
+        this.room = new window.WebsimSocket();
+
         // Audio handling
         this.audioCtx = null;
         this.setupUI();
@@ -54,7 +63,15 @@ class Game {
         this.animate = this.animate.bind(this);
         window.addEventListener('resize', this.onResize.bind(this));
         
-        this.animate();
+        // Initialize multiplayer then start loop
+        this.initMultiplayer().then(() => {
+            this.animate();
+        });
+    }
+
+    async initMultiplayer() {
+        await this.room.initialize();
+        console.log("Joined room as", this.room.clientId);
     }
 
     setupUI() {
@@ -89,7 +106,54 @@ class Game {
     animate() {
         requestAnimationFrame(this.animate);
         
+        // 1. Update Local Car
         this.car.update(this.track.colliders);
+
+        // 2. Multiplayer Sync
+        // Broadcast my state
+        const myData = {
+            x: this.car.mesh.position.x,
+            y: this.car.mesh.position.y,
+            z: this.car.mesh.position.z,
+            qx: this.car.mesh.quaternion.x,
+            qy: this.car.mesh.quaternion.y,
+            qz: this.car.mesh.quaternion.z,
+            qw: this.car.mesh.quaternion.w,
+            color: this.myColor
+        };
+        this.room.updatePresence(myData);
+
+        // Process Peers
+        const presence = this.room.presence;
+        const connectedIds = Object.keys(presence);
+
+        // Add or Update peers
+        for (const id of connectedIds) {
+            if (id === this.room.clientId) continue; // Skip self
+
+            const data = presence[id];
+            if (!this.peers[id]) {
+                // Create new peer car
+                const peerColor = data.color || 0xffffff;
+                const peerCar = new Car(this.scene, null, null, true, peerColor);
+                this.peers[id] = peerCar;
+            }
+            
+            // Update peer car
+            if (this.peers[id]) {
+                this.peers[id].updateRemoteData(data);
+                this.peers[id].update(null);
+            }
+        }
+
+        // Remove disconnected peers
+        for (const id of Object.keys(this.peers)) {
+            if (!presence[id]) {
+                this.scene.remove(this.peers[id].mesh);
+                delete this.peers[id];
+            }
+        }
+
         this.renderer.render(this.scene, this.camera);
     }
 }
