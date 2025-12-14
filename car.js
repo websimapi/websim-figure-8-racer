@@ -7,10 +7,10 @@ export class Car {
         this.camera = camera;
         
         this.speed = 0;
-        this.maxSpeed = 5.5; // Super fast for huge map
-        this.acceleration = 0.08;
-        this.friction = 0.98;
-        this.turnSpeed = 0.04;
+        this.maxSpeed = 150; // Increased speed for massive 30x scale map
+        this.acceleration = 0.15; // Slow buildup for "heavy" feel
+        this.friction = 0.99; // Less friction to maintain speed
+        this.turnSpeed = 0.015; // Reduced turn speed for smoother control at high speed
         this.heading = 0; // Radians
 
         this.velocity = new THREE.Vector3();
@@ -198,10 +198,11 @@ export class Car {
         this.mesh.quaternion.slerp(finalQ, 0.2);
 
         // Camera Follow
+        // Adjusted for high speed and scale
         const camOffset = new THREE.Vector3(
-            Math.sin(this.heading + Math.PI) * 10,
-            6,
-            Math.cos(this.heading + Math.PI) * 10
+            Math.sin(this.heading + Math.PI) * 15,
+            8,
+            Math.cos(this.heading + Math.PI) * 15
         );
         const targetPos = this.mesh.position.clone().add(camOffset);
         this.camera.position.lerp(targetPos, 0.1);

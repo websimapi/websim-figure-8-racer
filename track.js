@@ -9,28 +9,28 @@ export class Track {
 
     generate() {
         // Curve definition
-        // Super Massive Figure-8 with Bridge
+        // GIGANTIC Figure-8 with Bridge (30x scale)
         const path = new THREE.CatmullRomCurve3([
-            new THREE.Vector3(0, 0, 0),             // 0. Center Low (Underpass start)
-            new THREE.Vector3(400, 0, 400),         // 1. Right Loop Entry
-            new THREE.Vector3(1000, 0, 600),        // 2. Right Loop Wide Corner
-            new THREE.Vector3(1600, 0, 0),          // 3. Right Loop Apex
-            new THREE.Vector3(1000, 0, -600),       // 4. Right Loop Return Corner
-            new THREE.Vector3(400, 30, -400),       // 5. Climbing towards bridge
-            new THREE.Vector3(0, 70, 0),            // 6. Bridge Peak (Crossing Over)
-            new THREE.Vector3(-400, 30, 400),       // 7. Descending from bridge
-            new THREE.Vector3(-1000, 0, 600),       // 8. Left Loop Wide Corner
-            new THREE.Vector3(-1600, 0, 0),         // 9. Left Loop Apex
-            new THREE.Vector3(-1000, 0, -600),      // 10. Left Loop Return Corner
-            new THREE.Vector3(-400, 0, -400),       // 11. Return to Center Low
+            new THREE.Vector3(0, 0, 0),                 // 0. Center Low
+            new THREE.Vector3(12000, 0, 12000),         // 1. Right Loop Entry
+            new THREE.Vector3(30000, 0, 18000),         // 2. Right Loop Wide Corner
+            new THREE.Vector3(48000, 0, 0),             // 3. Right Loop Apex
+            new THREE.Vector3(30000, 0, -18000),        // 4. Right Loop Return Corner
+            new THREE.Vector3(12000, 900, -12000),      // 5. Climbing
+            new THREE.Vector3(0, 2100, 0),              // 6. Bridge Peak
+            new THREE.Vector3(-12000, 900, 12000),      // 7. Descending
+            new THREE.Vector3(-30000, 0, 18000),        // 8. Left Loop Wide Corner
+            new THREE.Vector3(-48000, 0, 0),            // 9. Left Loop Apex
+            new THREE.Vector3(-30000, 0, -18000),       // 10. Left Loop Return Corner
+            new THREE.Vector3(-12000, 0, -12000),       // 11. Return
         ], true, 'catmullrom', 0.1); 
 
         // --- CUSTOM ROAD GEOMETRY GENERATION ---
         // Manually building the mesh to ensure zero banking/roll ("keep up")
         
-        const pointsCount = 3000;
+        const pointsCount = 15000; // Increased density for huge scale
         const points = path.getSpacedPoints(pointsCount);
-        const roadWidth = 60; // Highway scale
+        const roadWidth = 1800; // 30x Width
         
         const positions = [];
         const uvs = [];
@@ -68,7 +68,7 @@ export class Track {
 
             // UVs
             const dist = i / points.length;
-            const repeatY = 800; 
+            const repeatY = 24000; // 30x length repeat
             uvs.push(0, dist * repeatY);
             uvs.push(1, dist * repeatY);
 
@@ -94,7 +94,7 @@ export class Track {
 
         // Material
         const asphaltTex = createTexture('asphalt_texture.png', 1, 1); 
-        asphaltTex.repeat.set(4, 800); 
+        asphaltTex.repeat.set(120, 24000); // Dense tiling
         
         const mat = new THREE.MeshStandardMaterial({ 
             map: asphaltTex,
@@ -109,7 +109,7 @@ export class Track {
         const wallGeo = new THREE.BufferGeometry();
         const wallPos = [];
         const wallInd = [];
-        const wallHeight = 1.5;
+        const wallHeight = 20; // Taller walls for visibility at scale
 
         for (let i = 0; i < points.length; i++) {
             const p = points[i];
@@ -165,17 +165,18 @@ export class Track {
 
         // 2. Pillars
         // Generate pillars only where the track is elevated
-        const pointsOnCurve = path.getSpacedPoints(800); 
-        const pillarGeo = new THREE.CylinderGeometry(8, 8, 1, 16); // Massive pillars
+        const pointsOnCurve = path.getSpacedPoints(1500); 
+        const pillarGeo = new THREE.CylinderGeometry(240, 240, 1, 32); // 30x Radius
         const pillarMat = new THREE.MeshStandardMaterial({ map: createTexture('concrete_texture.png') });
-        
+        pillarMat.map.repeat.set(1, 10); // Vertical repeat
+
         pointsOnCurve.forEach((pt) => {
             // Only place pillars if we are high enough off the ground
             const distFromCenter = Math.sqrt(pt.x * pt.x + pt.z * pt.z);
             
-            // Large clearance radius (80) to ensure underpass is wide open
-            if (pt.y > 10 && distFromCenter > 90) {
-                const height = pt.y - 2;
+            // Scaled clearance: 10->300 height, 90->2700 radius
+            if (pt.y > 300 && distFromCenter > 2700) {
+                const height = pt.y - 20;
                 const pillar = new THREE.Mesh(pillarGeo, pillarMat);
                 pillar.position.set(pt.x, height / 2, pt.z);
                 pillar.scale.set(1, height, 1);
@@ -186,14 +187,14 @@ export class Track {
         });
         
         // 3. Ground Plane
-        const groundGeo = new THREE.PlaneGeometry(10000, 10000); // Continent size ground
+        const groundGeo = new THREE.PlaneGeometry(300000, 300000); // Planet size ground
         const groundMat = new THREE.MeshStandardMaterial({ 
             color: 0x33aa33, 
             roughness: 1 
         });
         const ground = new THREE.Mesh(groundGeo, groundMat);
         ground.rotation.x = -Math.PI / 2;
-        ground.position.y = -0.6;
+        ground.position.y = -5;
         this.scene.add(ground);
 
         // Add ground to physics collisions so car can drive on grass
