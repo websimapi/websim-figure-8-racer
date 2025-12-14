@@ -8,7 +8,7 @@ export class Car {
         
         this.speed = 0;
         this.maxSpeed = 150; // Increased speed for massive 30x scale map
-        this.acceleration = 0.15; // Slow buildup for "heavy" feel
+        this.acceleration = 0.04; // Much slower acceleration for heavy feel
         this.friction = 0.99; // Less friction to maintain speed
         this.turnSpeed = 0.015; // Reduced turn speed for smoother control at high speed
         this.heading = 0; // Radians
@@ -23,7 +23,7 @@ export class Car {
         
         this.grounded = false;
         this.verticalVel = 0;
-        this.gravity = 0.08; // Stronger gravity for stickier handling
+        this.gravity = 0.5; // Stronger gravity to keep car planted
 
         this.engineSound = null;
     }
@@ -126,9 +126,9 @@ export class Car {
         this.mesh.position.z += this.velocity.z;
 
         // Vertical Physics (Raycast)
-        // Cast from higher up to catch steep slopes
+        // Cast from higher up to catch steep slopes (increased offset to 50)
         this.raycaster.set(
-            new THREE.Vector3(this.mesh.position.x, this.mesh.position.y + 5, this.mesh.position.z), 
+            new THREE.Vector3(this.mesh.position.x, this.mesh.position.y + 50, this.mesh.position.z), 
             this.down
         );
         
@@ -150,17 +150,19 @@ export class Car {
 
         // Gravity / Ground Snap
         if (hitFound) {
+            // Hover height avoids clipping (visual suspension)
+            const hoverHeight = 0.5;
             // Distance from car pivot to ground
-            const dist = this.mesh.position.y - groundHeight;
+            const dist = this.mesh.position.y - (groundHeight + hoverHeight);
             
-            if (dist < 1.0 && dist > -1.0) {
+            if (dist < 2.0 && dist > -2.0) {
                 // Snap to ground
-                this.mesh.position.y = groundHeight;
+                this.mesh.position.y = groundHeight + hoverHeight;
                 this.verticalVel = 0;
                 this.grounded = true;
             } else if (dist < 0) {
                 // We are underground, pop up
-                 this.mesh.position.y = groundHeight;
+                 this.mesh.position.y = groundHeight + hoverHeight;
                  this.verticalVel = 0;
                  this.grounded = true;
             } else {

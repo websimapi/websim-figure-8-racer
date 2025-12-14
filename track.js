@@ -186,6 +186,9 @@ export class Track {
             }
         });
         
+        // Add scenery
+        this.addScenery(path);
+
         // 3. Ground Plane
         const groundGeo = new THREE.PlaneGeometry(300000, 300000); // Planet size ground
         const groundMat = new THREE.MeshStandardMaterial({ 
@@ -201,6 +204,68 @@ export class Track {
         this.colliders.push(ground);
 
         return { mesh: trackMesh, path: path };
+    }
+
+    addScenery(path) {
+        // Procedural trees along the track
+        const treeGeo = new THREE.ConeGeometry(80, 200, 8);
+        const trunkGeo = new THREE.CylinderGeometry(20, 20, 60, 8);
+        
+        const treeMat = new THREE.MeshStandardMaterial({ color: 0x228b22, roughness: 0.9 });
+        const trunkMat = new THREE.MeshStandardMaterial({ color: 0x8b4513, roughness: 1.0 });
+        
+        const count = 400;
+        const trees = new THREE.InstancedMesh(treeGeo, treeMat, count);
+        const trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, count);
+        
+        const dummy = new THREE.Object3D();
+        const points = path.getSpacedPoints(count);
+        
+        let instanceIdx = 0;
+        
+        for (let i = 0; i < points.length; i++) {
+            // Offset from track
+            const side = Math.random() > 0.5 ? 1 : -1;
+            const dist = 2500 + Math.random() * 4000; // Scatter distance
+            
+            // Calculate approximate perpendicular direction
+            const tangent = new THREE.Vector3().subVectors(
+                points[Math.min(i+1, points.length-1)], 
+                points[i]
+            ).normalize();
+            const up = new THREE.Vector3(0,1,0);
+            const right = new THREE.Vector3().crossVectors(up, tangent).normalize();
+            
+            const pos = new THREE.Vector3().copy(points[i]).addScaledVector(right, side * dist);
+            pos.y = -5; // Ground level
+            
+            // Random Scale
+            const scale = 1.5 + Math.random() * 2.5;
+            
+            // Trunk
+            dummy.position.copy(pos);
+            dummy.position.y += 30 * scale; 
+            dummy.rotation.set(0, Math.random() * Math.PI, 0);
+            dummy.scale.set(scale, scale, scale);
+            dummy.updateMatrix();
+            trunks.setMatrixAt(instanceIdx, dummy.matrix);
+            
+            // Leaves
+            dummy.position.y += 100 * scale;
+            dummy.updateMatrix();
+            trees.setMatrixAt(instanceIdx, dummy.matrix);
+            
+            instanceIdx++;
+            if (instanceIdx >= count) break;
+        }
+        
+        trees.castShadow = true;
+        trees.receiveShadow = true;
+        trunks.castShadow = true;
+        trunks.receiveShadow = true;
+        
+        this.scene.add(trees);
+        this.scene.add(trunks);
     }
 }
 
