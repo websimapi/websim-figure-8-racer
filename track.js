@@ -35,6 +35,11 @@ export class Track {
         const uvs = [];
         const indices = [];
 
+        const wallPos = [];
+        const wallUVs = [];
+        const wallIndices = [];
+        const wallHeight = 40;
+
         // Temporary vectors
         const up = new THREE.Vector3(0, 1, 0);
         const forward = new THREE.Vector3();
@@ -65,11 +70,28 @@ export class Track {
             positions.push(pL.x, pL.y, pL.z); // Vertex 2*i
             positions.push(pR.x, pR.y, pR.z); // Vertex 2*i + 1
 
+            // Guard Rails
+            // Left Wall (at pL)
+            wallPos.push(pL.x, pL.y, pL.z);
+            wallPos.push(pL.x, pL.y + wallHeight, pL.z);
+            
+            // Right Wall (at pR)
+            wallPos.push(pR.x, pR.y, pR.z);
+            wallPos.push(pR.x, pR.y + wallHeight, pR.z);
+
             // UVs
             const dist = i / points.length;
             const repeatY = 60000; // Texture repeat scale
             uvs.push(0, dist * repeatY);
             uvs.push(1, dist * repeatY);
+            
+            // Wall UVs (U = dist, V = height)
+            // Left Wall
+            wallUVs.push(dist * repeatY, 0);
+            wallUVs.push(dist * repeatY, 1);
+            // Right Wall
+            wallUVs.push(dist * repeatY, 0);
+            wallUVs.push(dist * repeatY, 1);
 
             // Indices (Quads)
             if (i < points.length - 1) {
@@ -82,6 +104,18 @@ export class Track {
                 indices.push(a, d, b);
                 // Face 2
                 indices.push(a, c, d);
+                
+                // Walls
+                const base = i * 4;
+                const next = (i + 1) * 4;
+                
+                // Left Wall Quad
+                wallIndices.push(base, next, base+1);
+                wallIndices.push(base+1, next, next+1);
+                
+                // Right Wall Quad
+                wallIndices.push(base+2, next+2, base+3);
+                wallIndices.push(base+3, next+2, next+3);
             }
         }
 
@@ -109,8 +143,31 @@ export class Track {
         trackMesh.receiveShadow = true;
         this.scene.add(trackMesh);
         
+        // Walls Mesh
+        const wallGeo = new THREE.BufferGeometry();
+        wallGeo.setAttribute('position', new THREE.Float32BufferAttribute(wallPos, 3));
+        wallGeo.setAttribute('uv', new THREE.Float32BufferAttribute(wallUVs, 2));
+        wallGeo.setIndex(wallIndices);
+        wallGeo.computeVertexNormals();
+        
+        const wallTex = createTexture('concrete_texture.png', 1, 10);
+        wallTex.repeat.set(1000, 1);
+        
+        const wallMat = new THREE.MeshStandardMaterial({
+            map: wallTex,
+            roughness: 0.9,
+            side: THREE.DoubleSide
+        });
+        
+        const wallMesh = new THREE.Mesh(wallGeo, wallMat);
+        wallMesh.name = 'wall';
+        wallMesh.castShadow = true;
+        wallMesh.receiveShadow = true;
+        this.scene.add(wallMesh);
+
         // Physics Collider
         this.colliders.push(trackMesh);
+        this.colliders.push(wallMesh);
 
         // 2. Pillars
         // Generate pillars only where the track is elevated

@@ -7,10 +7,10 @@ export class Car {
         this.camera = camera;
         
         // Physics Configuration
-        this.acceleration = 2.5; // Reduced acceleration
+        this.acceleration = 1.2; // Reduced acceleration
         this.drag = 0.98; // Air resistance / Rolling resistance
         this.grip = 0.96; // Lateral friction (lower = more drift)
-        this.turnSpeed = 0.03; 
+        this.turnSpeed = 0.015; 
         this.gravity = 1.0; 
         this.maxReverseSpeed = 50;
 
@@ -126,6 +126,24 @@ export class Car {
             
             // Steer
             this.heading += inputs.steering * this.turnSpeed * dirSign * Math.min(speed / 20, 1.0);
+        }
+
+        // Wall Collision
+        if (speed > 0.1) {
+            const dir = this.velocity.clone().normalize();
+            // Cast from slightly above center to hit the wall mesh
+            const rayOrigin = this.mesh.position.clone().add(new THREE.Vector3(0, 1.0, 0));
+            this.raycaster.set(rayOrigin, dir);
+            
+            const hits = this.raycaster.intersectObjects(colliders, true);
+            for (let hit of hits) {
+                if (hit.object.name === 'wall' && hit.distance < 2.5) {
+                    // Bounce and stop
+                    this.velocity.multiplyScalar(-0.5);
+                    this.mesh.position.addScaledVector(dir, -(2.5 - hit.distance));
+                    break;
+                }
+            }
         }
 
         // Lateral Grip / Drifting
