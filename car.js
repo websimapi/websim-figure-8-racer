@@ -7,7 +7,7 @@ export class Car {
         this.camera = camera;
         
         this.speed = 0;
-        this.maxSpeed = 1.4; // Faster for larger track
+        this.maxSpeed = 2.2; // Much faster for the massive track
         this.acceleration = 0.03;
         this.friction = 0.97;
         this.turnSpeed = 0.045;

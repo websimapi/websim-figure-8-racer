@@ -9,36 +9,33 @@ export class Track {
 
     generate() {
         // Curve definition
-        // Large Figure-8 with Bridge
+        // Massive Figure-8 with Bridge
         // Center at 0,0,0
-        // Crosses at diagonals for better flow
         
         const path = new THREE.CatmullRomCurve3([
             // --- UNDERPASS SECTION (Crossing Center Low) ---
-            new THREE.Vector3(0, 0, 0),         // Center Low
+            new THREE.Vector3(0, 0, 0),
             
-            // --- RIGHT LOOP (Climbing) ---
-            new THREE.Vector3(50, 4, 40),       // Gentle climb out
-            new THREE.Vector3(90, 8, 0),        // Far Right Apex (Mid Height)
-            new THREE.Vector3(50, 12, -40),     // Climbing back in
+            // --- RIGHT LOOP (Ground Level -> Climbing) ---
+            new THREE.Vector3(150, 0, 120),     // Wide turn out
+            new THREE.Vector3(280, 0, 0),       // Far Right Apex (Ground)
+            new THREE.Vector3(150, 9, -120),    // Climbing return
             
             // --- OVERPASS SECTION (Crossing Center High) ---
-            new THREE.Vector3(0, 14, 0),        // Center High (Bridge)
+            new THREE.Vector3(0, 24, 0),        // High Bridge Clearance
             
-            // --- LEFT LOOP (Descending) ---
-            new THREE.Vector3(-50, 10, 40),     // Descending out
-            new THREE.Vector3(-90, 4, 0),       // Far Left Apex (Low)
-            new THREE.Vector3(-50, 0, -40),     // Returning to ground
+            // --- LEFT LOOP (Descending -> Ground) ---
+            new THREE.Vector3(-150, 15, 120),   // Descending out
+            new THREE.Vector3(-280, 0, 0),      // Far Left Apex (Ground)
+            new THREE.Vector3(-150, 0, -120),   // Return to center low
             
-            // Close the loop
-            // The curve is closed: true, so it connects back to (0,0,0)
-        ], true, 'catmullrom', 0.5);
+        ], true, 'catmullrom', 0.3); // Lower tension for smoother, less twisty curves
 
         // --- VISUALS ---
 
         // 1. Road Surface
         const roadShape = new THREE.Shape();
-        const roadWidth = 10; // Wider track
+        const roadWidth = 18; // Significantly wider for the larger scale
         const wallHeight = 2;
         const wallThick = 0.8;
 
@@ -59,7 +56,7 @@ export class Track {
             bevelEnabled: false
         });
 
-        const asphaltTex = createTexture('asphalt_texture.png', 6, 150); // Adjusted tiling
+        const asphaltTex = createTexture('asphalt_texture.png', 6, 600); // More repeats for longer track
         const mat = new THREE.MeshStandardMaterial({ 
             map: asphaltTex,
             roughness: 0.8,
@@ -76,8 +73,8 @@ export class Track {
 
         // 2. Pillars
         // Generate pillars only where the track is elevated
-        const pointsOnCurve = path.getSpacedPoints(80);
-        const pillarGeo = new THREE.CylinderGeometry(2, 2, 1, 16); // Thicker pillars
+        const pointsOnCurve = path.getSpacedPoints(300); // More sample points for the longer track
+        const pillarGeo = new THREE.CylinderGeometry(3, 3, 1, 16); // Even thicker pillars
         const pillarMat = new THREE.MeshStandardMaterial({ map: createTexture('concrete_texture.png') });
         
         pointsOnCurve.forEach((pt) => {
@@ -85,7 +82,8 @@ export class Track {
             // And avoid placing pillars directly in the center (0,0,0) to prevent blocking the underpass
             const distFromCenter = Math.sqrt(pt.x * pt.x + pt.z * pt.z);
             
-            if (pt.y > 2.5 && distFromCenter > 8) {
+            // Increased clearance check for the larger underpass
+            if (pt.y > 4 && distFromCenter > 20) {
                 const height = pt.y - 0.5;
                 const pillar = new THREE.Mesh(pillarGeo, pillarMat);
                 pillar.position.set(pt.x, height / 2, pt.z);
@@ -97,7 +95,7 @@ export class Track {
         });
         
         // 3. Ground Plane
-        const groundGeo = new THREE.PlaneGeometry(500, 500); // Larger ground
+        const groundGeo = new THREE.PlaneGeometry(2000, 2000); // Massive ground for driving off-road
         const groundMat = new THREE.MeshStandardMaterial({ 
             color: 0x33aa33, 
             roughness: 1 
@@ -106,6 +104,9 @@ export class Track {
         ground.rotation.x = -Math.PI / 2;
         ground.position.y = -0.6;
         this.scene.add(ground);
+
+        // Add ground to physics collisions so car can drive on grass
+        this.colliders.push(ground);
 
         return { mesh: trackMesh, path: path };
     }
