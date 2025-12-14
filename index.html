@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Figure-8 Racer</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #87CEEB; font-family: sans-serif; touch-action: none; }
+        #game-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+        #instructions {
+            position: absolute; top: 20px; left: 20px;
+            background: rgba(0,0,0,0.5); color: white; padding: 15px;
+            border-radius: 8px; pointer-events: none;
+            transition: opacity 0.5s;
+        }
+        #mobile-controls {
+            position: absolute; bottom: 40px; right: 40px;
+            width: 100px; height: 100px;
+            pointer-events: auto;
+            display: none; /* Shown via JS if mobile */
+        }
+        #start-btn {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            padding: 15px 40px; font-size: 24px; background: #ffcc00; border: none;
+            border-radius: 5px; cursor: pointer; pointer-events: auto;
+            font-weight: bold; box-shadow: 0 4px 0 #cc9900;
+        }
+        #start-btn:active { transform: translate(-50%, -46%); box-shadow: 0 0 0 #cc9900; }
+        .hidden { opacity: 0; pointer-events: none; }
+    </style>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://esm.sh/three@0.160.0",
+                "three/addons/": "https://esm.sh/three@0.160.0/examples/jsm/",
+                "nipplejs": "https://esm.sh/nipplejs@0.10.1"
+            }
+        }
+    </script>
+</head>
+<body>
+    <div id="game-container"></div>
+    <div id="ui-layer">
+        <div id="instructions">
+            <h2>Figure-8 Racer</h2>
+            <p>Desktop: WASD or Arrows to drive.</p>
+            <p>Mobile: Drag joystick to drive.</p>
+        </div>
+        <button id="start-btn">START ENGINE</button>
+        <div id="mobile-controls"></div>
+    </div>
+    <script type="module" src="./main.js"></script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4c6229722a6346bc8eb5cb0e5eae5d41","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+</body>
+</html>
+
