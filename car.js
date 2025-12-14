@@ -8,8 +8,8 @@ export class Car {
         
         this.speed = 0;
         this.maxSpeed = 150; // Increased speed for massive 30x scale map
-        this.acceleration = 0.04; // Much slower acceleration for heavy feel
-        this.friction = 0.99; // Less friction to maintain speed
+        this.acceleration = 0.1; 
+        this.friction = 0.998; 
         this.turnSpeed = 0.015; // Reduced turn speed for smoother control at high speed
         this.heading = 0; // Radians
 
@@ -200,15 +200,14 @@ export class Car {
         this.mesh.quaternion.slerp(finalQ, 0.2);
 
         // Camera Follow
-        // Adjusted for high speed and scale
-        const camOffset = new THREE.Vector3(
-            Math.sin(this.heading + Math.PI) * 15,
-            8,
-            Math.cos(this.heading + Math.PI) * 15
-        );
-        const targetPos = this.mesh.position.clone().add(camOffset);
-        this.camera.position.lerp(targetPos, 0.1);
-        this.camera.lookAt(this.mesh.position);
+        // Use a relative offset that rotates with the car to handle slopes better
+        const relativeOffset = new THREE.Vector3(0, 4, -9); 
+        const cameraOffset = relativeOffset.clone().applyQuaternion(this.mesh.quaternion);
+        const targetPos = this.mesh.position.clone().add(cameraOffset);
+        
+        // Much stiffer lerp to stick close to the car
+        this.camera.position.lerp(targetPos, 0.5);
+        this.camera.lookAt(this.mesh.position.clone().add(new THREE.Vector3(0, 1.5, 0)));
 
         // Audio Pitch
         if (this.engineSound) {
