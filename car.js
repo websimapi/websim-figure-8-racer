@@ -144,7 +144,6 @@ export class Car {
         let groundNormal = new THREE.Vector3(0, 1, 0);
 
         for (let hit of intersects) {
-            // Check if hit is reasonably close below relative to the cast origin
             if (hit.point.y > groundHeight) {
                 groundHeight = hit.point.y;
                 groundNormal = hit.face.normal;
@@ -152,10 +151,18 @@ export class Car {
             }
         }
 
+        // FALLBACK: If we missed everything (off-road logic safety), assume ground plane at y=-5
+        // This fixes "broken off-road" if the raycaster misses the ground mesh for any reason
+        if (!hitFound) {
+            groundHeight = -5;
+            groundNormal.set(0, 1, 0);
+            hitFound = true;
+        }
+
         // Gravity / Ground Snap
         if (hitFound) {
             // Hover height avoids clipping (visual suspension)
-            const hoverHeight = 0.5;
+            const hoverHeight = 0.8; // Increased slightly to prevent clipping on uneven terrain
             // Distance from car pivot to ground
             const dist = this.mesh.position.y - (groundHeight + hoverHeight);
             
@@ -205,14 +212,12 @@ export class Car {
         this.mesh.quaternion.slerp(finalQ, 0.2);
 
         // Camera Follow
-        // Use a relative offset that rotates with the car to handle slopes better
-        // Moved closer to car
-        const relativeOffset = new THREE.Vector3(0, 3.5, -7); 
+        // LOCKED CAMERA: No lerp, direct position copy to ensure it keeps up perfectly
+        const relativeOffset = new THREE.Vector3(0, 4.0, -9); // Slightly further back/up for better view
         const cameraOffset = relativeOffset.clone().applyQuaternion(this.mesh.quaternion);
         const targetPos = this.mesh.position.clone().add(cameraOffset);
         
-        // Much stiffer lerp to stick close to the car (0.85) to reduce lag at high speeds
-        this.camera.position.lerp(targetPos, 0.85);
+        this.camera.position.copy(targetPos);
         this.camera.lookAt(this.mesh.position.clone().add(new THREE.Vector3(0, 1.5, 0)));
 
         // Audio Pitch

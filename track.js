@@ -199,6 +199,7 @@ export class Track {
         const ground = new THREE.Mesh(groundGeo, groundMat);
         ground.rotation.x = -Math.PI / 2;
         ground.position.y = -5;
+        ground.frustumCulled = false; // Ensure it never disappears
         this.scene.add(ground);
 
         // Add ground to physics collisions so car can drive on grass
