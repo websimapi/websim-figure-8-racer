@@ -7,10 +7,10 @@ export class Car {
         this.camera = camera;
         
         this.speed = 0;
-        this.maxSpeed = 0.8;
-        this.acceleration = 0.02;
-        this.friction = 0.96;
-        this.turnSpeed = 0.05;
+        this.maxSpeed = 1.4; // Faster for larger track
+        this.acceleration = 0.03;
+        this.friction = 0.97;
+        this.turnSpeed = 0.045;
         this.heading = 0; // Radians
 
         this.velocity = new THREE.Vector3();
