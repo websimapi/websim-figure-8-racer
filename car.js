@@ -15,7 +15,7 @@ export class Car {
 
         this.velocity = new THREE.Vector3();
         this.mesh = this.createCarMesh();
-        this.mesh.position.set(0, 2, 0); // Start high to drop in
+        this.mesh.position.set(0, 5, 0); // Start higher to drop in safely
         this.scene.add(this.mesh);
 
         this.raycaster = new THREE.Raycaster();
@@ -126,13 +126,14 @@ export class Car {
         this.mesh.position.z += this.velocity.z;
 
         // Vertical Physics (Raycast)
-        // Cast from higher up to catch steep slopes (increased offset to 50)
+        // Cast from higher up to catch steep slopes (increased offset to 100)
         this.raycaster.set(
-            new THREE.Vector3(this.mesh.position.x, this.mesh.position.y + 50, this.mesh.position.z), 
+            new THREE.Vector3(this.mesh.position.x, this.mesh.position.y + 100, this.mesh.position.z), 
             this.down
         );
         
-        const intersects = this.raycaster.intersectObjects(colliders, false);
+        // Recursive true to ensure we hit the ground mesh even if hierarchy changes
+        const intersects = this.raycaster.intersectObjects(colliders, true);
         
         // Find highest point below car
         let groundHeight = -100;
@@ -201,17 +202,20 @@ export class Car {
 
         // Camera Follow
         // Use a relative offset that rotates with the car to handle slopes better
-        const relativeOffset = new THREE.Vector3(0, 4, -9); 
+        // Moved closer to car
+        const relativeOffset = new THREE.Vector3(0, 3.5, -7); 
         const cameraOffset = relativeOffset.clone().applyQuaternion(this.mesh.quaternion);
         const targetPos = this.mesh.position.clone().add(cameraOffset);
         
-        // Much stiffer lerp to stick close to the car
-        this.camera.position.lerp(targetPos, 0.5);
+        // Much stiffer lerp to stick close to the car (0.85) to reduce lag at high speeds
+        this.camera.position.lerp(targetPos, 0.85);
         this.camera.lookAt(this.mesh.position.clone().add(new THREE.Vector3(0, 1.5, 0)));
 
         // Audio Pitch
         if (this.engineSound) {
-            const pitch = 0.5 + Math.abs(this.speed) * 1.5;
+            // Normalized pitch based on maxSpeed to prevent crazy high frequencies
+            const speedRatio = Math.abs(this.speed) / this.maxSpeed;
+            const pitch = 0.5 + speedRatio * 1.5;
             this.engineSound.playbackRate.value = pitch;
         }
     }

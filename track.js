@@ -193,7 +193,8 @@ export class Track {
         const groundGeo = new THREE.PlaneGeometry(300000, 300000); // Planet size ground
         const groundMat = new THREE.MeshStandardMaterial({ 
             color: 0x33aa33, 
-            roughness: 1 
+            roughness: 1,
+            side: THREE.DoubleSide
         });
         const ground = new THREE.Mesh(groundGeo, groundMat);
         ground.rotation.x = -Math.PI / 2;
