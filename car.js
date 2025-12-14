@@ -7,7 +7,7 @@ export class Car {
         this.camera = camera;
         
         // Physics Configuration
-        this.acceleration = 4.0; 
+        this.acceleration = 2.5; // Reduced acceleration
         this.drag = 0.98; // Air resistance / Rolling resistance
         this.grip = 0.96; // Lateral friction (lower = more drift)
         this.turnSpeed = 0.03; 
@@ -204,8 +204,8 @@ export class Car {
             
             // Floor Clamp (Infinite Ground Plane)
             // If we fall below -5 (ground level) and aren't on a bridge, catch it.
-            if (this.mesh.position.y < -5 + hoverHeight) {
-                 this.mesh.position.y = -5 + hoverHeight;
+            if (this.mesh.position.y < -0.2 + hoverHeight) {
+                 this.mesh.position.y = -0.2 + hoverHeight;
                  this.verticalVel = 0;
                  this.grounded = true;
                  groundNormal.set(0, 1, 0); // Flat ground
@@ -236,14 +236,14 @@ export class Car {
 
         // --- 4. Camera Follow ---
         
-        const relativeOffset = new THREE.Vector3(0, 6.0, -14); // Higher/Further for better visibility
+        const relativeOffset = new THREE.Vector3(0, 5.0, -12); // Closer and lower for tighter feel
         const cameraOffset = relativeOffset.clone().applyQuaternion(this.mesh.quaternion);
         // Reduce vertical jitter by dampening the camera target Y
         const targetPos = this.mesh.position.clone().add(cameraOffset);
         
-        // Simple smoothing for camera position
-        this.camera.position.lerp(targetPos, 0.2); // Tight lerp to reduce rigid lock vibration but keep it fast
-        this.camera.lookAt(this.mesh.position.clone().add(new THREE.Vector3(0, 2.0, 0)));
+        // Stiffer smoothing for camera position to keep up
+        this.camera.position.lerp(targetPos, 0.5); 
+        this.camera.lookAt(this.mesh.position.clone().add(new THREE.Vector3(0, 1.5, 0)));
 
 
         // --- 5. Audio ---

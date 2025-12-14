@@ -10,10 +10,10 @@ class Game {
         // Scene Setup
         this.scene = new THREE.Scene();
         this.scene.background = new THREE.Color(0x87CEEB);
-        this.scene.fog = new THREE.Fog(0x87CEEB, 20000, 150000);
+        this.scene.fog = new THREE.Fog(0x87CEEB, 20000, 350000);
 
         // Camera
-        this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.5, 200000);
+        this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.5, 500000);
         this.camera.position.set(0, 10, 20);
 
         // Renderer
@@ -29,7 +29,7 @@ class Game {
         const sun = new THREE.DirectionalLight(0xffffff, 1);
         sun.position.set(30000, 60000, 30000);
         sun.castShadow = true;
-        const d = 60000;
+        const d = 200000;
         sun.shadow.camera.left = -d;
         sun.shadow.camera.right = d;
         sun.shadow.camera.top = d;
