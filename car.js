@@ -126,9 +126,12 @@ export class Car {
         this.mesh.position.z += this.velocity.z;
 
         // Vertical Physics (Raycast)
-        // Cast from higher up to catch steep slopes (increased offset to 100)
+        // Fix: Clamp ray start height to ensure we never cast from below the ground plane (y=-5)
+        // This prevents tunneling if the car falls fast or frame rate drops
+        const rayOriginY = Math.max(this.mesh.position.y + 100, 500);
+
         this.raycaster.set(
-            new THREE.Vector3(this.mesh.position.x, this.mesh.position.y + 100, this.mesh.position.z), 
+            new THREE.Vector3(this.mesh.position.x, rayOriginY, this.mesh.position.z), 
             this.down
         );
         
@@ -136,7 +139,7 @@ export class Car {
         const intersects = this.raycaster.intersectObjects(colliders, true);
         
         // Find highest point below car
-        let groundHeight = -100;
+        let groundHeight = -Infinity;
         let hitFound = false;
         let groundNormal = new THREE.Vector3(0, 1, 0);
 
@@ -156,13 +159,14 @@ export class Car {
             // Distance from car pivot to ground
             const dist = this.mesh.position.y - (groundHeight + hoverHeight);
             
-            if (dist < 2.0 && dist > -2.0) {
+            // Increased snap range for better slope handling
+            if (dist < 5.0 && dist > -5.0) {
                 // Snap to ground
                 this.mesh.position.y = groundHeight + hoverHeight;
                 this.verticalVel = 0;
                 this.grounded = true;
             } else if (dist < 0) {
-                // We are underground, pop up
+                // We are underground (tunneled), pop up
                  this.mesh.position.y = groundHeight + hoverHeight;
                  this.verticalVel = 0;
                  this.grounded = true;
@@ -217,6 +221,15 @@ export class Car {
             const speedRatio = Math.abs(this.speed) / this.maxSpeed;
             const pitch = 0.5 + speedRatio * 1.5;
             this.engineSound.playbackRate.value = pitch;
+        }
+
+        // Safety Respawn
+        if (this.mesh.position.y < -1000) {
+            this.mesh.position.set(0, 10, 0);
+            this.velocity.set(0,0,0);
+            this.speed = 0;
+            this.heading = 0;
+            this.grounded = false;
         }
     }
 }
